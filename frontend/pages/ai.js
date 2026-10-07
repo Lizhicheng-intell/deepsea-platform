@@ -308,9 +308,23 @@
         ];
       },
       commands: function () { this.tick; return API.commands().filter(function (c) { return c.command_type === 'light'; }); },
-      latest: function () { this.tick; return this.commands.length ? this.commands[0] : null; }
+      latest: function () { this.tick; return this.commands.length ? this.commands[0] : null; },
+      /* 当前档位对应的"人话"说明（组员反馈：只给百分比不直观） */
+      dimLevel: function () { return this.levelOf(this.dimming); }
     },
     methods: {
+      /* 🔴 档位 → 人话。为什么只给"相对光强"而不给 lux 绝对值：
+         实际照度 = 灯具额定照度 × 档位，而**我们的灯具没有标定过额定照度**
+         （见「管理 · 标定与维护」里 light_01 那条）。
+         编一个 lux 数字出来，答辩被问"你哪来的"就答不上 —— 所以只给相对值。 */
+      levelOf: function (pct) {
+        const p = Number(pct);
+        if (p <= 0)   return { name: '关闭', rel: '0', note: '不补光' };
+        if (p <= 25)  return { name: '弱',   rel: '约 1/4 额定', note: '阴天 / 清晨补光' };
+        if (p <= 50)  return { name: '中',   rel: '约 1/2 额定', note: '常规补光' };
+        if (p <= 75)  return { name: '强',   rel: '约 3/4 额定', note: '促生长时段' };
+        return { name: '满', rel: '额定出力', note: '最大出力' };
+      },
       load: function () {
         const self = this;
         API.resolve(API.env('site_01', this.minutes, {}), function (d) { self.series = d; });
@@ -325,7 +339,13 @@
       },
       statusCn: function (s) {
         return { created: '已创建', sent: '已发出', acknowledged: '已收到回执', success: '成功',
-                 timeout: '超时', retrying: '重试中', failed: '失败', escalated: '升级报警' }[s] || s;
+                 timeout: '超时', retrying: '重试中', failed: '失败', escalated: '升级报警',
+                 cancelled: '已停止' }[s] || s;
+      },
+      /* 命令的下发时间（组员反馈：补光历史要能看到下发时间，方便查命令） */
+      cmdTime: function (c) {
+        const ts = c.created_ts || (c.history && c.history.length ? c.history[0].ts : null);
+        return ts ? new Date(ts).toLocaleString('zh-CN', { hour12: false }) : '—';
       }
     },
     mounted: function () {
@@ -365,21 +385,56 @@
       '      <div v-if="!latest" class="todo">还没有下发过补光命令</div>',
       '      <div v-else>',
       '        <command-flow :status="latest.command_status" />',
-      '        <div class="kv" style="margin-top:12px">',
+      '        <div class="kv" style="margin-top:8px">',
       '          <span class="k">命令号</span><span class="mono">{{ latest.command_id }}</span>',
-      '          <span class="k">目标档位</span><span>{{ latest.params.light_dimming_pct }} %</span>',
+      '          <span class="k">下发时间</span><span>{{ cmdTime(latest) }}</span>',
+      '          <span class="k">目标档位</span>',
+      '          <span>{{ latest.params.light_dimming_pct }} %（{{ levelOf(latest.params.light_dimming_pct).name }}）</span>',
       '          <span class="k">失败原因</span>',
       '          <span :style="{ color: latest.fail_reason ? \'#991B1B\' : \'#6B7280\' }">{{ latest.fail_reason || \'—\' }}</span>',
       '        </div>',
       '      </div>',
-      '      <div class="small muted" style="margin-top:12px">补光历史</div>',
-      '      <div class="events">',
+      '      <!-- 补光历史：2026-10-07 按组员反馈放大（原来状态机占太多、历史看不了几条），',
+      '           并加上「下发时间」—— 查命令时最需要的就是时间 -->',
+      '      <div class="small muted" style="margin-top:12px">',
+      '        补光历史<span v-if="commands.length">（{{ commands.length }} 条）</span>',
+      '      </div>',
+      '      <div class="events" style="max-height:320px;overflow:auto">',
       '        <div v-for="c in commands" :key="c.command_id" class="row-item" style="cursor:default">',
-      '          <span class="t">{{ c.params.light_dimming_pct }}%</span>',
-      '          <span class="d mono small">{{ c.command_id }} · {{ statusCn(c.command_status) }}</span>',
+      '          <span class="t">{{ cmdTime(c) }}</span>',
+      '          <span class="d">',
+      '            <b>{{ c.params.light_dimming_pct }}%</b>',
+      '            <span class="small muted">{{ levelOf(c.params.light_dimming_pct).name }}</span>',
+      '            · <span class="mono small">{{ c.command_id }}</span>',
+      '            · <span :style="{ color: c.command_status === \'success\' ? \'#166534\' : (c.fail_reason ? \'#991B1B\' : \'#6B7280\') }">{{ statusCn(c.command_status) }}</span>',
+      '          </span>',
       '        </div>',
       '        <div v-if="!commands.length" class="empty">暂无记录</div>',
       '      </div>',
+      '    </div>',
+      '  </div>',
+      '',
+      '  <!-- 档位对照表：组员反馈「只给百分比没法知道是什么样的光照条件」 -->',
+      '  <div class="card" style="margin-top:12px">',
+      '    <div class="card-title">调光档位对照</div>',
+      '    <div class="dt-wrap">',
+      '      <table class="dt">',
+      '        <thead><tr><th>档位</th><th>档位名</th><th>相对光强</th><th>典型用途</th></tr></thead>',
+      '        <tbody>',
+      '          <tr v-for="lv in [[0,\'关闭\'],[25,\'弱\'],[50,\'中\'],[75,\'强\'],[100,\'满\']]" :key="lv[0]">',
+      '            <td class="mono">≤ {{ lv[0] }} %</td>',
+      '            <td><b>{{ lv[1] }}</b></td>',
+      '            <td class="small">{{ levelOf(lv[0]).rel }}</td>',
+      '            <td class="small">{{ levelOf(lv[0]).note }}</td>',
+      '          </tr>',
+      '        </tbody>',
+      '      </table>',
+      '    </div>',
+      '    <div class="hint small" style="margin-top:10px">',
+      '      <b>为什么这里只给「相对光强」而不给 lux 绝对值</b>：',
+      '      实际照度 = 灯具额定照度 × 档位，而<b>本站的补光灯具没有做过计量标定</b>',
+      '      （见「管理 · 标定与维护」里 light_01 那条）。',
+      '      <b>编一个 lux 数字出来，答辩被问「你哪来的」就答不上</b> —— 所以只给相对值。',
       '    </div>',
       '  </div>',
       '',
@@ -387,8 +442,13 @@
       '    <time-range v-model="minutes" />',
       '    <span style="width:12px"></span>',
       '    <span class="small muted">手动设定调光档位</span>',
-      '    <input type="range" min="0" max="100" step="5" v-model.number="dimming" style="width:180px">',
+      '    <input type="range" min="0" max="100" step="5" v-model.number="dimming" style="width:180px"',
+      '           class="editable">',
       '    <b>{{ dimming }} %</b>',
+      '    <!-- 组员反馈：只给百分比不直观 —— 补上档位名与相对光强 -->',
+      '    <span class="small" style="color:#2F5496">',
+      '      {{ dimLevel.name }} · {{ dimLevel.rel }}',
+      '    </span>',
       '    <span style="flex:1"></span>',
       '    <button class="primary" @click="ask">下发补光命令</button>',
       '  </div>',
@@ -398,7 +458,7 @@
       '      <div class="card-title">确认下发补光命令？</div>',
       '      <div class="kv">',
       '        <span class="k">设备</span><span class="mono">light_01</span>',
-      '        <span class="k">调光档位</span><span>{{ dimming }} %</span>',
+      '        <span class="k">调光档位</span><span>{{ dimming }} % （{{ dimLevel.name }} · {{ dimLevel.rel }}）</span>',
       '        <span class="k">超时</span><span>5000 ms，最多重试 3 次</span>',
       '      </div>',
       '      <div class="row" style="justify-content:flex-end;margin-top:14px">',
