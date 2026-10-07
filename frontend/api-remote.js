@@ -210,4 +210,49 @@
     return Promise.all([pullFarm(), pullLedger(), pullFarmDevices()]);
   };
 
+  /* ==========================================================================
+     曲线数据的自动刷新
+     ==========================================================================
+     🔴 为什么要有这个（2026-10-07 组员反馈发现的平台级问题）：
+        原来只有「命令 / 告警 / 设备状态」在轮询（每 900ms），
+        **曲线数据（/api/env、/api/struct、/api/fish）只在进页面时拉一次** ——
+        之后就不动了。结果是：全平台所有曲线都是「进页面那一刻的快照」。
+
+        李志成在补光页发现的（「调了档位图不动，刷新一下才变」），
+        但根子不在补光页，**在每个有曲线的页面**。
+
+     【怎么用】页面里这样接：
+         mounted: function () {
+           this.unsub = API.bind(this, this.load);   // 一行搞定
+           this.load();
+         },
+         beforeUnmount: function () { if (this.unsub) { this.unsub(); this.unsub = null; } }
+     ========================================================================== */
+  M.SERIES_REFRESH_MS = 3000;      // 3 秒。够看出"在动"，又不会把本地服务打爆
+
+  var _seriesSubs = [];
+  M.onSeriesRefresh = function (fn) {
+    _seriesSubs.push(fn);
+    return function () {
+      var i = _seriesSubs.indexOf(fn);
+      if (i >= 0) _seriesSubs.splice(i, 1);
+    };
+  };
+  setInterval(function () {
+    _seriesSubs.slice().forEach(function (f) {
+      se(function () { f(); });          // 一个页面报错不影响其他页面
+    });
+  }, M.SERIES_REFRESH_MS);
+
+  /* 页面标准接法：一个取消函数管两件事（数据变化 + 定时刷新）。
+     用法见上面的注释。 */
+  M.bind = function (vm, load) {
+    var s1 = M.subscribe(function () { vm.tick++; });
+    var s2 = M.onSeriesRefresh(function () { load.call(vm); });
+    return function () { s1(); s2(); };
+  };
+
+  /* 吞掉异常的小工具 —— 定时器里抛错会中断整轮刷新 */
+  function se(fn) { try { fn(); } catch (e) { /* 忽略单个页面的异常 */ } }
+
 })(window);

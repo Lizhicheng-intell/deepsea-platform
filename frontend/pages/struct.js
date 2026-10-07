@@ -107,7 +107,12 @@
       lvCls: function (l) { return 'bg-' + (l || 'blue'); },
       pick: function (e) { this.picked = e.hit || e; }
     },
-    mounted: function () { this.load(); },
+    mounted: function () {
+      /* API.bind：数据变化重算 + 定时刷新曲线 */
+      this.unsub = API.bind(this, this.load);
+      this.load();
+    },
+    beforeUnmount: function () { if (this.unsub) { this.unsub(); this.unsub = null; } },
     watch: { minutes: function () { this.load(); } },
     template: [
       '<div>',
@@ -189,7 +194,12 @@
       },
       lvCn: function (l) { return { blue: '正常', yellow: '低电量', red: '严重低电量' }[l] || l; }
     },
-    mounted: function () { this.load(); },
+    mounted: function () {
+      /* API.bind：数据变化重算 + 定时刷新曲线 */
+      this.unsub = API.bind(this, this.load);
+      this.load();
+    },
+    beforeUnmount: function () { if (this.unsub) { this.unsub(); this.unsub = null; } },
     watch: { minutes: function () { this.load(); } },
     template: [
       '<div>',

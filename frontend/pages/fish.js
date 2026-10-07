@@ -63,7 +63,12 @@
       cn: function (v) { return { none: '无', weak: '弱', mid: '中', strong: '强' }[v] || v; },
       time: function (ts) { return new Date(ts).toLocaleString('zh-CN', { hour12: false }); }
     },
-    mounted: function () { this.load(); },
+    mounted: function () {
+      /* API.bind：数据变化重算 + 定时刷新曲线 */
+      this.unsub = API.bind(this, this.load);
+      this.load();
+    },
+    beforeUnmount: function () { if (this.unsub) { this.unsub(); this.unsub = null; } },
     watch: { minutes: function () { this.load(); } },
     template: [
       '<div>',
@@ -123,7 +128,12 @@
         API.resolve(API.heatGrid(), function (g) { self.grid = g; });
       }
     },
-    mounted: function () { this.load(); },
+    mounted: function () {
+      /* API.bind：数据变化重算 + 定时刷新曲线 */
+      this.unsub = API.bind(this, this.load);
+      this.load();
+    },
+    beforeUnmount: function () { if (this.unsub) { this.unsub(); this.unsub = null; } },
     template: [
       '<div>',
       '  <page-head title="鱼类 · 鱼群分布热力图"',

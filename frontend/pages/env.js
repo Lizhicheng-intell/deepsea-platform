@@ -149,7 +149,9 @@
     },
     mounted: function () {
       const self = this;
-      this.unsub = API.subscribe(function () { self.tick++; });
+      /* API.bind = 数据变化时重算 + 每 3 秒自动刷新曲线（见 api-remote.js 的说明）。
+         🔴 2026-10-07 加：之前曲线只在进页面时拉一次，是张静止的快照。 */
+      this.unsub = API.bind(this, this.load);
       this.load();
     },
     beforeUnmount: function () { if (this.unsub) { this.unsub(); this.unsub = null; } },
@@ -308,7 +310,12 @@
       },
       time: function (ts) { return new Date(ts).toLocaleString('zh-CN', { hour12: false }); }
     },
-    mounted: function () { this.load(); },
+    mounted: function () {
+      /* API.bind：数据变化重算 + 定时刷新曲线 */
+      this.unsub = API.bind(this, this.load);
+      this.load();
+    },
+    beforeUnmount: function () { if (this.unsub) { this.unsub(); this.unsub = null; } },
     watch: {
       minutes: function () { this.load(); },
       site: function () { this.load(); },

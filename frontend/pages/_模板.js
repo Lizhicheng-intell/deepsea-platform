@@ -74,13 +74,17 @@
 
     /* ---------- 生命周期 ---------- */
     mounted: function () {
-      const self = this;
-      /* 订阅数据变化。API 那边一 _bump()，这里 tick 就 ++，页面自动重算。
-         **必须配 beforeUnmount 取消订阅**，否则切页面会越来越多。 */
-      this.unsub = API.subscribe(function () { self.tick++; });
+      /* API.bind = 一行管两件事：
+           ① 数据变化时让 tick++（触发 computed 重算）
+           ② **每 3 秒自动重新拉一次曲线**，图表才会"动"
+         🔴 2026-10-07 加的第 ②：原来曲线只在进页面时拉一次，是张静止的快照 ——
+            组员发现「调了档位图不动，刷新一下才变」，根子就在这里。
+         **有曲线图的页面都必须这么接。** */
+      this.unsub = API.bind(this, this.load);
       this.load();
     },
     beforeUnmount: function () {
+      /* 必须取消订阅，否则切来切去会越积越多、越跑越卡 */
       if (this.unsub) { this.unsub(); this.unsub = null; }
     },
 

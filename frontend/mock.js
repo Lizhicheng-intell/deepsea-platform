@@ -13,6 +13,13 @@
 (function (global) {
   'use strict';
 
+  /* 曲线自动刷新的订阅表（对应 api-remote.js 里的 _seriesSubs）。
+     ⚠️ 这个声明曾经漏掉过一次：批量改代码的脚本按 `const M = {` 找锚点往里插，
+        但本文件里对象叫 `const API = {` —— 于是用到它的代码全在、声明却没有，
+        运行时报 MOCK_SERIES_SUBS is not defined（而且是每 3 秒报一次，刷满控制台）。
+        教训：**批量改代码时，锚点没匹配上必须报错，不能静默跳过。** */
+  const MOCK_SERIES_SUBS = [];
+
   /* ---------- 站点（接口文档 8.1） ---------- */
   const SITES = [
     { site_id: 'site_01', site_name: '模拟养殖站点',   kind: 'farm',   latitude: 26.10, longitude: 119.90, farming_depth_m: 20 },
@@ -390,6 +397,23 @@
       return { ok: false, error: '纯前端演示模式没有后端，记不了标定' };
     },
     reloadFarm: function () { return null; },
+
+    /* 曲线自动刷新 —— mock 模式的数据是本地现算的，定时重算就是"活的"。
+       与 api-remote.js 的 API.bind 行为保持一致，页面代码两边通用。 */
+    SERIES_REFRESH_MS: 3000,
+    onSeriesRefresh: function (fn) {
+      MOCK_SERIES_SUBS.push(fn);
+      return function () {
+        var i = MOCK_SERIES_SUBS.indexOf(fn);
+        if (i >= 0) MOCK_SERIES_SUBS.splice(i, 1);
+      };
+    },
+    /* 页面标准接法：订阅数据变化 + 定时重算曲线，返回一个取消函数 */
+    bind: function (vm, load) {
+      var s1 = API.subscribe(function () { vm.tick++; });
+      var s2 = API.onSeriesRefresh(function () { try { load.call(vm); } catch (e) {} });
+      return function () { s1(); s2(); };
+    },
     now: function () { return Date.now(); },
 
     env: function (siteId, minutes, opts) { return envSeries(siteId, minutes || 60, opts); },
@@ -490,4 +514,12 @@
   };
 
   global.API = API;
+
+  /* 每 SERIES_REFRESH_MS 毫秒把所有订阅的页面重算一次曲线 */
+  setInterval(function () {
+    MOCK_SERIES_SUBS.slice().forEach(function (f) {
+      try { f(); } catch (e) { /* 单个页面异常不影响其他页面 */ }
+    });
+  }, API.SERIES_REFRESH_MS);
+
 })(window);

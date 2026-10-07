@@ -89,7 +89,9 @@
     mounted: function () {
       this.load();
       const self = this;
-      this.unsub = API.subscribe(function () { self.tick++; });
+      /* API.bind = 数据变化时重算 + 每 3 秒自动刷新曲线（见 api-remote.js 的说明）。
+         🔴 2026-10-07 加：之前曲线只在进页面时拉一次，是张静止的快照。 */
+      this.unsub = API.bind(this, this.load);
     },
     beforeUnmount: function () { if (this.unsub) this.unsub(); },
     template: [
@@ -260,7 +262,9 @@
     mounted: function () {
       this.load();
       const self = this;
-      this.unsub = API.subscribe(function () { self.tick++; });
+      /* API.bind = 数据变化时重算 + 每 3 秒自动刷新曲线（见 api-remote.js 的说明）。
+         🔴 2026-10-07 加：之前曲线只在进页面时拉一次，是张静止的快照。 */
+      this.unsub = API.bind(this, this.load);
     },
     beforeUnmount: function () { if (this.unsub) this.unsub(); },
     watch: { minutes: function () { this.load(); } },
