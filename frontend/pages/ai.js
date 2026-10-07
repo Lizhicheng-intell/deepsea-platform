@@ -35,10 +35,25 @@
            dec 若是 null 会抛 "Cannot read properties of null" */
         dec: { biomass_kg: null, feeding_intensity_cn: '—', suggest_kg_h: null,
                water_temp: null, basis: [], times_per_day: 4 },
-        records: [], inject: '', confirmOpen: false, lastSent: null, unsub: null
+        records: [], inject: '', confirmOpen: false, lastSent: null, unsub: null,
+        /* 2026-10-07 按组员反馈新增：
+             mode   —— 自动/手动模式切换。自动=按系统算的规则投喂；手动=自己填量
+             amount —— 手工投喂量。null 表示"还没填过"，界面上回落显示建议值 */
+        mode: 'auto', amount: null, stopMsg: ''
       };
     },
     computed: {
+      /* 实际要下发的投喂量：手动模式下用填的值，否则用系统的建议值 */
+      targetKg: function () {
+        if (this.mode === 'manual' && this.amount !== null && this.amount !== '') {
+          return Number(this.amount);
+        }
+        return this.dec.suggest_kg_h;
+      },
+      /* 有没有"正在执行中"的任务 —— 决定记录表里那行的「停止」按钮显不显示 */
+      runningCount: function () {
+        return this.records.filter(function (r) { return r.task_status !== 'done'; }).length;
+      },
       feeder: function () {
         const d = API.devices().filter(function (x) { return x.device_id === 'feeder_01'; })[0];
         return d || {};
@@ -80,11 +95,32 @@
         this.confirmOpen = false;
         const self = this;
         const cmd = API.sendCommand('feeder_01', 'feed',
-          { amount_kg: this.dec.suggest_kg_h, duration_s: 60 },
+          { amount_kg: this.targetKg, duration_s: 60 },
           this.inject ? { inject: this.inject } : {});
         this.lastSent = cmd;
+        this.stopMsg = '';
         this.$nextTick(function () { /* 让状态机进度条立刻可见 */ });
-      }
+        /* 立刻刷一次记录表 —— 否则要等下一个 3 秒周期，
+           「停止」按钮才出现，人手早过了那个时间窗。 */
+        setTimeout(function () { self.load(); }, 900);
+      },
+      /* 手动停止一条还没跑完的任务（组员反馈：投喂要能中途停）。
+         ⚠️ 后端只允许停「未到终态」的命令 —— 已成功/已失败的改不了，
+            那是历史事实。所以这里失败是正常情况，要把原因显示出来。 */
+      stop: function (r) {
+        const self = this;
+        this.stopMsg = '';
+        API.resolve(API.cancelCommand(r.command_id, '值班人手动停止投喂'), function (res) {
+          if (res && res.ok) {
+            self.stopMsg = '已停止 ' + r.command_id;
+          } else {
+            self.stopMsg = '停不了：' + ((res && (res.error || res.msg)) || '未知原因');
+          }
+          self.load();
+        });
+      },
+      /* 手动模式：把输入框一键填成建议值 */
+      useSuggest: function () { this.amount = this.dec.suggest_kg_h; }
     },
     mounted: function () {
       this.load();
@@ -140,18 +176,49 @@
       '        </div>',
       '      </div>',
       '',
+      '      <!-- 投喂模式（2026-10-07 按组员反馈新增） -->',
+      '      <div class="card">',
+      '        <div class="card-title">投喂模式</div>',
+      '        <div class="row" style="gap:8px;align-items:center">',
+      '          <button :class="{ primary: mode === \'auto\' }" @click="mode = \'auto\'">自动</button>',
+      '          <button :class="{ primary: mode === \'manual\' }" @click="mode = \'manual\'">手动</button>',
+      '          <span class="small muted">',
+      '            {{ mode === \'auto\' ? \'按系统算出的投喂规则投喂\' : \'自己决定投喂量\' }}',
+      '          </span>',
+      '        </div>',
+      '        <div v-if="mode === \'manual\'" class="row" style="gap:8px;align-items:center;margin-top:10px">',
+      '          <span class="small muted">投喂量</span>',
+      '          <input type="number" step="0.1" v-model.number="amount"',
+      '                 :placeholder="\'建议 \' + dec.suggest_kg_h" style="width:110px">',
+      '          <span class="small">kg/h</span>',
+      '          <button @click="useSuggest">用建议值（{{ dec.suggest_kg_h }}）</button>',
+      '        </div>',
+      '        <div class="hint small" style="margin-top:10px">',
+      '          <b>系统给的是建议，不是命令。</b>自动模式下按建议值投喂，',
+      '          手动模式下由值班人决定 —— <b>最终下发前都要二次确认</b>。',
+      '        </div>',
+      '      </div>',
+      '',
       '      <!-- 投喂记录时间线 -->',
       '      <div class="card">',
-      '        <div class="card-title">投喂记录</div>',
-      '        <div class="dt-wrap" style="max-height:260px">',
+      '        <div class="card-title">投喂记录',
+      '          <span v-if="runningCount" class="small" style="font-weight:400;color:#92400E">',
+      '            · {{ runningCount }} 条正在执行</span>',
+      '        </div>',
+      '        <div v-if="stopMsg" class="hint small" style="margin-bottom:8px">{{ stopMsg }}</div>',
+      '        <div class="dt-wrap" style="max-height:300px">',
       '          <table class="dt">',
-      '            <thead><tr><th>时间</th><th>投喂量 (kg)</th><th>触发来源</th><th>任务状态</th><th>命令号</th></tr></thead>',
+      '            <thead><tr><th>时间</th><th>投喂量 (kg)</th><th>触发来源</th><th>任务状态</th><th>命令号</th><th></th></tr></thead>',
       '            <tbody>',
       '              <tr v-for="r in records" :key="r.command_id">',
       '                <td>{{ time(r.ts) }}</td><td>{{ r.amount_kg }}</td>',
       '                <td>{{ r.trigger_by === \'auto\' ? \'自动\' : \'手动\' }}</td>',
       '                <td>{{ r.task_status === \'done\' ? \'已完成\' : \'正在执行\' }}</td>',
       '                <td class="mono">{{ r.command_id }}</td>',
+      '                <td style="white-space:nowrap">',
+      '                  <button v-if="r.task_status !== \'done\'" @click="stop(r)">停止</button>',
+      '                  <span v-else class="small muted">—</span>',
+      '                </td>',
       '              </tr>',
       '            </tbody>',
       '          </table>',
@@ -186,7 +253,8 @@
       '  </div>',
       '',
       '  <div class="opbar" style="margin:12px -16px -16px; border-radius:0">',
-      '    <button class="primary" @click="ask">下发投喂命令（{{ dec.suggest_kg_h }} kg/h）</button>',
+      '    <span class="small muted">{{ mode === \'auto\' ? \'自动模式\' : \'手动模式\' }}</span>',
+'    <button class="primary" @click="ask">下发投喂命令（{{ targetKg }} kg/h）</button>',
       '    <!-- 就地反馈：命令状态直接显示在按钮旁边，不用滚回页首看状态机 -->',
       '    <span v-if="latest" class="small">',
       '      最近命令 <span class="mono">{{ latest.command_id }}</span> ·',
@@ -207,7 +275,8 @@
       '      <div class="card-title">确认下发投喂命令？</div>',
       '      <div class="kv">',
       '        <span class="k">设备</span><span class="mono">feeder_01</span>',
-      '        <span class="k">投喂量</span><span>{{ dec.suggest_kg_h }} kg/h</span>',
+      '        <span class="k">投喂量</span><span><b>{{ targetKg }}</b> kg/h',
+      '          <span class="small muted">（{{ mode === \'auto\' ? \'系统建议值\' : \'手动填写\' }}）</span></span>',
       '        <span class="k">时长</span><span>60 s</span>',
       '        <span class="k">超时</span><span>5000 ms，最多重试 3 次</span>',
       '      </div>',

@@ -500,6 +500,8 @@ class Platform(object):
         self.commands = []
         self._seq = 0
         self.alarms = self._seed_alarms()
+        self._seed_commands()      # 预置几条真实历史命令（投喂记录从它派生）
+
 
     def _seed_alarms(self):
         now = int(time.time() * 1000)
@@ -534,6 +536,30 @@ class Platform(object):
         ]
 
     # ---------- 指令状态机 ----------
+    def cancel_command(self, command_id, reason="值班人手动停止"):
+        """手动停止一条还没走到终态的命令（组员反馈：投喂要能中途停）。
+
+        ⚠️ 只允许停「未到终态」的命令。
+        已经 success / failed / escalated 的不能改 —— 那是历史事实，不能篡改。
+        这正是这个平台「不允许静默失败」的另一面：**也不允许悄悄改历史**。
+        """
+        FINAL = ("success", "failed", "escalated", "cancelled")
+        for c in self.commands:
+            if c.get("command_id") != command_id:
+                continue
+            st = c.get("command_status")
+            if st in FINAL:
+                raise ValueError("命令已到终态（%s），不能再停止" % st)
+            now = int(time.time() * 1000)
+            c["command_status"] = "cancelled"
+            c["fail_reason"] = reason
+            c["history"].append({"ts": now, "status": "cancelled",
+                                 "note": "值班人手动停止"})
+            return {"ok": True, "command_id": command_id,
+                    "command_status": "cancelled",
+                    "stopped_at": now, "reason": reason}
+        raise ValueError("命令不存在：%s" % command_id)
+
     def send_command(self, device_id, command_type, params, inject=None):
         with self.lock:
             self._seq += 1
@@ -567,6 +593,12 @@ class Platform(object):
            超时的命令根本没收到回执，不可能出现 acknowledged / success。
            这里曾经写成"先走完整成功链再补失败链"，导致命令历史里
            同时存在 success 和 escalated —— 自相矛盾，答辩时会被问倒。
+
+        🔴 2026-10-07 加「手动停止」支持：
+           状态机跑在**独立线程**里，之前只往前进、不看命令当前状态 ——
+           结果 cancel_command 把状态改成 cancelled 之后，
+           这个线程睡醒照样把命令推到 success，**"手动停止"变成一句空话**。
+           现在每一步之前都检查一次，被停过就立刻收手。
         """
         if inject in ("offline", "timeout"):
             steps = ["created", "sent"]      # 发出去了，但等不到回执
@@ -574,8 +606,16 @@ class Platform(object):
             steps = ["created", "sent", "acknowledged", "success"]
 
         for st in steps:
-            time.sleep(0.7)
+            # 每步 1.4 秒（原 0.7）。
+            # 🔴 2026-10-07 改：0.7 秒时整条链 2.8 秒就跑完，**人手根本来不及点「停止」** ——
+            #    组员要的"手动停止"变成摆设。1.4 秒 × 4 步 = 5.6 秒，够看清状态流转，
+            #    也够点一下停止。这个值同时影响演示观感，改之前先想清楚。
+            time.sleep(1.4)
+            if cmd.get("command_status") == "cancelled":
+                return                        # 值班人已停止，不许再往前走
             self._set(cmd, st)
+            if cmd.get("command_status") == "cancelled":
+                return
             if st == "success":
                 cmd["receipt_result"] = {"success": True, "result": "executed",
                                          "actual_ts": int(time.time() * 1000), "error_code": None}
@@ -636,18 +676,69 @@ class Platform(object):
             })
 
     def feed_records(self):
-        r = _rng()
-        now = int(time.time() * 1000)
+        """投喂记录 —— **从真实命令派生，不再凭空生成**。
+
+        🔴 2026-10-07 改（组员反馈「投喂要能手动停止」时暴露的）：
+           原来这里用 _rng() 编了 9 条记录，命令号形如 cmd_20261005_0100。
+           界面上看不出问题，但一点「停止」就报「命令不存在」——
+           因为那些命令号**后端根本没有**。这就是"编数据"埋的雷：
+           静态看一眼没事，一交互就穿帮。
+
+           现在改成从 self.commands 里筛（设备=feeder_01 且类型=feed），
+           每一条都是真命令，都有真实状态机历史，都能被停止。
+           历史之所以不为空，是因为启动时预置了几条**真实存在**的命令（见 _seed_commands）。
+        """
         out = []
-        for i in range(8, -1, -1):
+        for c in self.commands:
+            if c.get("device_id") != "feeder_01" or c.get("command_type") != "feed":
+                continue
+            st = c.get("command_status")
             out.append({
-                "ts": now - i * 3 * 3600 * 1000,
-                "amount_kg": round(r.gauss(11.5, 2), 1),
-                "trigger_by": "manual" if i % 3 == 0 else "auto",
-                "task_status": "running" if i == 0 else "done",
-                "command_id": "cmd_20261005_%04d" % (100 - i),
+                "ts": c.get("created_ts") or (c.get("history") or [{}])[0].get("ts"),
+                "amount_kg": (c.get("params") or {}).get("amount_kg"),
+                "trigger_by": (c.get("params") or {}).get("trigger_by", "manual"),
+                "task_status": "done" if st in ("success", "failed", "escalated", "cancelled") else "running",
+                "command_id": c.get("command_id"),
+                "command_status": st,
             })
         return out
+
+    def _seed_commands(self):
+        """预置几条**真实存在**的历史命令。
+
+        为什么要预置：记录表现在从真实命令派生，不预置的话演示一开始是空表。
+        预置的是"过去几小时投喂过几次"这种事实，每条都在命令表里查得到、停得掉 ——
+        跟原来那种"编个号糊上去"有本质区别。
+        """
+        now = int(time.time() * 1000)
+        seed = [
+            (9, 11.2, "auto", "success"),
+            (6, 12.0, "auto", "success"),
+            (3, 10.5, "manual", "success"),
+            (1, 11.8, "auto", "success"),
+        ]
+        for hours_ago, kg, trigger, st in seed:
+            self._seq += 1
+            ts = now - hours_ago * 3600 * 1000
+            ymd = datetime.fromtimestamp(ts / 1000).strftime("%Y%m%d")
+            self.commands.append({
+                "command_id": "cmd_%s_%04d" % (ymd, self._seq),
+                "device_id": "feeder_01", "command_type": "feed",
+                "params": {"amount_kg": kg, "duration_s": 60, "trigger_by": trigger},
+                "timeout_ms": 5000, "max_retry": 3,
+                "command_status": st, "retry_count": 0, "fail_reason": None,
+                "created_ts": ts,
+                "history": [
+                    {"ts": ts, "status": "created"},
+                    {"ts": ts + 700, "status": "sent"},
+                    {"ts": ts + 1400, "status": "acknowledged"},
+                    {"ts": ts + 2100, "status": "success"},
+                ],
+                "receipt_result": {"success": True, "result": "executed",
+                                   "actual_ts": ts + 2100, "error_code": None},
+            })
+        self.commands.sort(key=lambda c: c.get("created_ts") or 0, reverse=True)
+
 
     def rule_check(self, row):
         """「一条竖线」用的水温判定 —— 与前端同口径"""
@@ -911,6 +1002,15 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             # ---------- 管理板块：写操作 ----------
+            # 手动停止未到终态的命令（组员反馈：投喂要能中途停）
+            m = re.match(r"^/api/commands/([\w\-]+)/cancel$", p)
+            if m:
+                try:
+                    return self._json(PLATFORM.cancel_command(m.group(1),
+                                                              body.get("reason")))
+                except ValueError as e:
+                    return self._err(400, str(e))
+
             if p == "/api/farm/ledger":
                 cid = body.get("cage_id")
                 ltype = body.get("type")

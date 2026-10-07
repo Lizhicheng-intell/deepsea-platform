@@ -103,6 +103,14 @@
     for (let i = 0; i < _alarms.length; i++) if (_alarms[i].alarm_event_id === id) return _alarms[i];
     return null;
   };
+  /* 手动停止一条还没到终态的命令（组员反馈：投喂要能中途停）。
+     只对「未到终态」的命令有效 —— 已成功/已失败的改不了，那是历史事实。 */
+  M.cancelCommand = function (commandId, reason) {
+    return post('/api/commands/' + encodeURIComponent(commandId) + '/cancel',
+                { reason: reason || '值班人手动停止' })
+      .then(function (r) { poll(); return r; });
+  };
+
   M.sendCommand = function (deviceId, type, params, opts) {
     const body = { device_id: deviceId, command_type: type, params: params || {} };
     if (opts && opts.inject) body.inject = opts.inject;

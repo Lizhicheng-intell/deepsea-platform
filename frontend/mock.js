@@ -397,6 +397,10 @@
       return { ok: false, error: '纯前端演示模式没有后端，记不了标定' };
     },
     reloadFarm: function () { return null; },
+    /* 纯前端模式没有真状态机，取消命令办不到 —— 明确报错，不假装成功 */
+    cancelCommand: function () {
+      return { ok: false, error: '纯前端演示模式没有后端，停不了命令' };
+    },
 
     /* 曲线自动刷新 —— mock 模式的数据是本地现算的，定时重算就是"活的"。
        与 api-remote.js 的 API.bind 行为保持一致，页面代码两边通用。 */
