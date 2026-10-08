@@ -210,10 +210,9 @@
   };
 
   PAGES['/struct/overview'] = {
-    data: function () { return { minutes: 60, series: [], envSeries: [], unsub: null }; },
+    data: function () { return { minutes: 60, series: [], unsub: null }; },
     computed: {
       last: function () { return this.series.length ? this.series[this.series.length - 1] : {}; },
-      envLast: function () { return this.envSeries.length ? this.envSeries[this.envSeries.length - 1] : {}; },
       charts: function () {
         const points = function (field) {
           return this.series.filter(function (r) {
@@ -222,7 +221,7 @@
         }.bind(this);
         return [
           { name: '锚链张力占设计值', unit: '%', data: points('tension_pct') },
-          { name: '俯仰角', unit: '°', axis: 1, data: points('tilt_pitch') }
+          { name: '网箱倾斜角', unit: '°', axis: 1, data: points('tilt_angle') }
         ];
       },
       riskText: function () {
@@ -252,9 +251,6 @@
       load: function () {
         const self = this;
         API.resolve(API.struct(this.minutes), function (d) { self.series = Array.isArray(d) ? d : []; });
-        API.resolve(API.env('site_01', this.minutes), function (d) {
-          self.envSeries = d && Array.isArray(d.fast) ? d.fast : [];
-        });
       }
     },
     mounted: function () { this.unsub = API.bind(this, this.load); this.load(); },
@@ -263,17 +259,17 @@
     template: [
       '<div>',
       '  <page-head title="结构安全 · 网箱结构总览"',
-      '    desc="汇总网箱受力、姿态和能源状态；当前数值来自结构数据接口，字段缺失时显示 —。"',
+      '    desc="汇总锚链、网衣、姿态和能源的代表性状态与趋势；海况数据请查看灾害分级预警页。"',
       '    :sources="[\'simulated\']" />',
       '',
       '  <div class="grid-stats">',
       '    <stat-card name="整体健康评分" field="health_score" :unit="last.health_score === undefined ? \'\' : \'分\'" :value="last.health_score === undefined ? \'—\' : last.health_score" source="simulated" :ts="last.ts" />',
       '    <stat-card name="当前风险等级" field="risk_level" unit="" :value="riskText" source="simulated" :ts="last.ts" />',
       '    <stat-card name="锚链张力" field="anchor_tension" unit="kN" :value="last.anchor_tension" source="simulated" :ts="last.ts" />',
+      '    <stat-card name="网绳拉力" field="net_tension" unit="kN" :value="last.net_tension" source="simulated" :ts="last.ts" />',
+      '    <stat-card name="倾斜角合量" field="tilt_angle" unit="°" :value="last.tilt_angle" source="simulated" :ts="last.ts" />',
+      '    <stat-card name="光伏发电功率" field="pv_power" unit="kW" :value="last.pv_power" source="simulated" :ts="last.ts" />',
       '    <stat-card name="储能电量" field="battery_soc" unit="%" :value="last.battery_soc" source="simulated" :ts="last.ts" />',
-      '    <stat-card name="浪高" field="wave_height" unit="m" :value="envLast.wave_height" :quality="envLast.quality" :ts="envLast.ts" :source="envLast.source || \'simulated\'" />',
-      '    <stat-card name="风速" field="wind_speed" unit="m/s" :value="envLast.wind_speed" :quality="envLast.quality" :ts="envLast.ts" :source="envLast.source || \'simulated\'" />',
-      '    <stat-card name="流速" field="current_speed" unit="m/s" :value="envLast.current_speed" :quality="envLast.quality" :ts="envLast.ts" :source="envLast.source || \'simulated\'" />',
       '  </div>',
       '',
       '  <div class="split" style="margin-top:12px">',
@@ -292,7 +288,7 @@
       '  </div>',
       '',
       '  <div style="margin-top:12px">',
-      '    <trend-chart title="结构张力与姿态变化" :series="charts" />',
+      '    <trend-chart title="结构安全关键趋势（张力占比与倾斜角）" :series="charts" />',
       '  </div>',
       '',
       '  <div class="opbar" style="margin:12px -16px -16px; border-radius:0">',
