@@ -170,6 +170,146 @@
     ].join('\n')
   };
 
+  PAGES['/struct/overview'] = {
+    data: function () { return { minutes: 60, series: [], unsub: null }; },
+    computed: {
+      last: function () { return this.series.length ? this.series[this.series.length - 1] : {}; },
+      charts: function () {
+        const points = function (field) {
+          return this.series.filter(function (r) {
+            return r[field] !== null && r[field] !== undefined && Number.isFinite(Number(r[field]));
+          }).map(function (r) { return [r.ts, Number(r[field])]; });
+        }.bind(this);
+        return [
+          { name: '锚链张力占设计值', unit: '%', data: points('tension_pct') },
+          { name: '俯仰角', unit: '°', axis: 1, data: points('tilt_pitch') },
+          { name: '光伏功率', unit: 'kW', axis: 1, data: points('pv_power') }
+        ];
+      }
+    },
+    methods: {
+      load: function () {
+        const self = this;
+        API.resolve(API.struct(this.minutes), function (d) { self.series = Array.isArray(d) ? d : []; });
+      }
+    },
+    mounted: function () { this.unsub = API.bind(this, this.load); this.load(); },
+    beforeUnmount: function () { if (this.unsub) { this.unsub(); this.unsub = null; } },
+    watch: { minutes: function () { this.load(); } },
+    template: [
+      '<div>',
+      '  <page-head title="结构安全 · 网箱结构总览"',
+      '    desc="汇总网箱受力、姿态和能源状态；当前数值来自结构数据接口，字段缺失时显示 —。"',
+      '    :sources="[\'simulated\']" />',
+      '',
+      '  <div class="grid-stats">',
+      '    <stat-card name="锚链张力" field="anchor_tension" unit="kN" :value="last.anchor_tension" source="simulated" :ts="last.ts" />',
+      '    <stat-card name="网绳拉力" field="net_tension" unit="kN" :value="last.net_tension" source="simulated" :ts="last.ts" />',
+      '    <stat-card name="网箱横滚角" field="tilt_roll" unit="°" :value="last.tilt_roll" source="simulated" :ts="last.ts" />',
+      '    <stat-card name="储能电量" field="battery_soc" unit="%" :value="last.battery_soc" source="simulated" :ts="last.ts" />',
+      '  </div>',
+      '',
+      '  <div class="split" style="margin-top:12px">',
+      '    <trend-chart title="结构与能源变化" :series="charts" />',
+      '    <div class="card">',
+      '      <div class="card-title">六项功能</div>',
+      '      <div class="small" style="line-height:2">',
+      '        <div>结构总览：锚链张力、网绳拉力、网箱姿态与能源状态</div>',
+      '        <div>锚泊张力预警：查看张力占设计值比例及预警事件</div>',
+      '        <div>网衣监测：查看网绳拉力；网衣区域数据未提供时显示 —</div>',
+      '        <div>形变与姿态：查看横滚、俯仰和三轴加速度</div>',
+      '        <div>灾害分级预警：按已配置规则查看预警事件</div>',
+      '        <div>能源保障：查看光伏功率、储能电量和设备功耗</div>',
+      '      </div>',
+      '    </div>',
+      '  </div>',
+      '',
+      '  <div class="opbar" style="margin:12px -16px -16px; border-radius:0">',
+      '    <time-range v-model="minutes" />',
+      '    <span style="flex:1"></span>',
+      '    <a href="#/detail"><button>查看监测详情</button></a>',
+      '    <a href="#/alarm"><button>查看灾害预警</button></a>',
+      '    <a href="#/energy"><button>查看能源保障</button></a>',
+      '  </div>',
+      '</div>'
+    ].join('\n')
+  };
+
+  PAGES['/struct/detail'] = {
+    data: function () { return { minutes: 60, series: [], unsub: null }; },
+    computed: {
+      last: function () { return this.series.length ? this.series[this.series.length - 1] : {}; },
+      charts: function () {
+        const points = function (field) {
+          return this.series.filter(function (r) {
+            return r[field] !== null && r[field] !== undefined && Number.isFinite(Number(r[field]));
+          }).map(function (r) { return [r.ts, Number(r[field])]; });
+        }.bind(this);
+        return [
+          { name: '锚链张力', unit: 'kN', data: points('anchor_tension') },
+          { name: '网绳拉力', unit: 'kN', data: points('net_tension') },
+          { name: '横滚角', unit: '°', axis: 1, data: points('tilt_roll') },
+          { name: '俯仰角', unit: '°', axis: 1, data: points('tilt_pitch') }
+        ];
+      },
+      acceleration: function () {
+        const keys = [
+          { key: 'accel_x', label: 'X 轴' },
+          { key: 'accel_y', label: 'Y 轴' },
+          { key: 'accel_z', label: 'Z 轴' }
+        ];
+        return keys.map(function (item) {
+          const value = this.last[item.key];
+          return { label: item.label, field: item.key, value: value === undefined ? null : value };
+        }, this);
+      }
+    },
+    methods: {
+      load: function () {
+        const self = this;
+        API.resolve(API.struct(this.minutes), function (d) { self.series = Array.isArray(d) ? d : []; });
+      }
+    },
+    mounted: function () { this.unsub = API.bind(this, this.load); this.load(); },
+    beforeUnmount: function () { if (this.unsub) { this.unsub(); this.unsub = null; } },
+    watch: { minutes: function () { this.load(); } },
+    template: [
+      '<div>',
+      '  <page-head title="结构安全 · 监测详情"',
+      '    desc="查看锚泊张力、网衣拉力、网箱姿态和三轴加速度；缺少传感器数据时显示 —。"',
+      '    :sources="[\'simulated\']" />',
+      '',
+      '  <div class="grid-stats">',
+      '    <stat-card name="锚链张力" field="anchor_tension" unit="kN" :value="last.anchor_tension" source="simulated" :ts="last.ts" />',
+      '    <stat-card name="张力占设计值" field="tension_pct" unit="%" :value="last.tension_pct" source="simulated" :ts="last.ts" />',
+      '    <stat-card name="网绳拉力" field="net_tension" unit="kN" :value="last.net_tension" source="simulated" :ts="last.ts" />',
+      '    <stat-card name="横滚角" field="tilt_roll" unit="°" :value="last.tilt_roll" source="simulated" :ts="last.ts" />',
+      '    <stat-card name="俯仰角" field="tilt_pitch" unit="°" :value="last.tilt_pitch" source="simulated" :ts="last.ts" />',
+      '    <stat-card name="空间位移" field="displacement" unit="m" :value="last.displacement" source="simulated" :ts="last.ts" />',
+      '  </div>',
+      '',
+      '  <div class="split" style="margin-top:12px">',
+      '    <trend-chart title="张力与姿态趋势" :series="charts" />',
+      '    <div class="card">',
+      '      <div class="card-title">三轴加速度</div>',
+      '      <div v-for="item in acceleration" :key="item.field" class="row" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line)">',
+      '        <span>{{ item.label }}（{{ item.field }}）</span>',
+      '        <b>{{ item.value === null ? \'—\' : item.value }}<span v-if="item.value !== null"> m/s²</span></b>',
+      '      </div>',
+      '      <div class="small muted" style="margin-top:8px">形变位移需由后端提供 displacement；目前没有该字段时不估算。</div>',
+      '    </div>',
+      '  </div>',
+      '',
+      '  <div class="opbar" style="margin:12px -16px -16px; border-radius:0">',
+      '    <time-range v-model="minutes" />',
+      '    <span style="flex:1"></span>',
+      '    <a href="#/overview"><button>返回结构总览</button></a>',
+      '    <a href="#/alarm"><button>查看预警</button></a>',
+      '  </div>',
+      '</div>'
+    ].join('\n')
+  };
+
   PAGES['/struct/energy'] = {
     data: function () { return { minutes: 60, series: [] }; },
     computed: {
