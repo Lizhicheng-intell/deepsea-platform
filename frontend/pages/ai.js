@@ -39,7 +39,7 @@
         /* 2026-10-07 按组员反馈新增：
              mode   —— 自动/手动模式切换。自动=按系统算的规则投喂；手动=自己填量
              amount —— 手工投喂量。null 表示"还没填过"，界面上回落显示建议值 */
-        mode: 'auto', amount: null, stopMsg: ''
+        mode: 'auto', amount: null, stopMsg: '', showSteps: false
       };
     },
     computed: {
@@ -176,8 +176,9 @@
       '            <a href="#/alarm">去告警中心看 →</a>',
       '            <div class="small" style="margin-top:4px">「不允许静默失败」：命令发出去没回执，必须报警，绝不许悄悄过去。</div>',
       '          </div>',
-      '          <div class="small muted" style="margin-top:10px">状态变更时间线</div>',
-      '          <div class="events">',
+      '          <div class="small muted" style="margin-top:10px;cursor:pointer" @click="showSteps = !showSteps">',
+      '            状态变更时间线 {{ showSteps ? \'▾\' : \'▸\' }}</div>',
+      '          <div v-if="showSteps" class="events">',
       '            <div v-for="(s, i) in steps" :key="i" class="row-item" style="cursor:default">',
       '              <span class="t">{{ s.t }}</span><span class="d">{{ statusCn(s.s) }}</span>',
       '            </div>',
@@ -217,7 +218,7 @@
       '            · {{ runningCount }} 条正在执行</span>',
       '        </div>',
       '        <div v-if="stopMsg" class="hint small" style="margin-bottom:8px">{{ stopMsg }}</div>',
-      '        <div class="dt-wrap" style="max-height:300px">',
+      '        <div class="dt-wrap" style="max-height:420px">',
       '          <table class="dt">',
       '            <thead><tr><th>时间</th><th>投喂量 (kg)</th><th>触发来源</th><th>任务状态</th><th>命令号</th><th></th></tr></thead>',
       '            <tbody>',
@@ -410,7 +411,7 @@
       '      <div class="small muted" style="margin-top:12px">',
       '        补光历史<span v-if="commands.length">（{{ commands.length }} 条）</span>',
       '      </div>',
-      '      <div class="events" style="max-height:320px;overflow:auto">',
+      '      <div class="events" style="max-height:400px;overflow:auto">',
       '        <div v-for="c in commands" :key="c.command_id" class="row-item" style="cursor:default">',
       '          <span class="t">{{ cmdTime(c) }}</span>',
       '          <span class="d">',
