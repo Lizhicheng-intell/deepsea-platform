@@ -130,6 +130,15 @@
       this.unsub = API.bind(this, this.load);
     },
     beforeUnmount: function () { if (this.unsub) this.unsub(); },
+    /* 2026-10-08 按《智能板块建议10.7》问题①：手动投喂默认填建议量。
+       切到手动模式时若还没填过，直接给建议值，值班人在此基础上改即可。 */
+    watch: {
+      mode: function (v) {
+        if (v === 'manual' && this.amount === null && this.dec && this.dec.suggest_kg_h != null) {
+          this.amount = this.dec.suggest_kg_h;
+        }
+      }
+    },
     template: [
       '<div>',
       '  <page-head title="智能 · 自动投喂"',
