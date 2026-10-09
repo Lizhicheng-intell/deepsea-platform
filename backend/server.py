@@ -57,6 +57,12 @@ import ndbc                                                  # noqa: E402
 # 养殖生产配置（管理板块）：网箱养什么鱼、存箱量台账、设备标定
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import farm as farmmod                                       # noqa: E402
+
+# 环境板块扩展接口（刘伟豪的 backend/api/env.py）
+#   ⚠️ 他没覆盖 /api/env 主接口 —— 只加了 4 条扩展路由（历史查询 / 覆盖范围 /
+#      风暴细化 / 仿真控制），所以跟我们现有的 env_series 不冲突。
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "api"))
+import env as envapi                                         # noqa: E402
 FARM = farmmod.Farm()
 
 # ----------------------------------------------------------------------
@@ -943,6 +949,34 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/ndbc/status":
             return self._json(ndbc.status())
 
+        # ---------- 环境板块扩展接口（刘伟豪的 backend/api/env.py）----------
+        # 他的 PR 说明里写着「需队长在 server.py 挂载 backend/api/env.py」——
+        # 挂载要改公共文件，按约定留给我做。**他做对了，这正是设计好的流程。**
+        if p == "/api/env/ndbc-ranges":
+            return self._json(envapi.ndbc_ranges())
+
+        if p == "/api/env/historical":
+            try:
+                return self._json(envapi.historical(
+                    one("site_id", "site_01"),
+                    int(one("start_ts", "0") or 0),
+                    int(one("end_ts", "0") or 0),
+                    int(one("max_points", "720") or 720)))
+            except ValueError as e:
+                return self._err(400, "参数错误：%s" % e)
+
+        if p == "/api/env/storm":
+            return self._json(envapi.storm(
+                one("site_id", "site_01"),
+                int(one("minutes", "60") or 60),
+                one("storm_type", "all"),
+                one("heat", "0") in ("1", "true"),
+                one("offline", "0") in ("1", "true"),
+                int(one("seed", "0")) or None))
+
+        if p == "/api/env/sim-control":
+            return self._json(envapi.sim_snapshot())
+
         if p == "/api/fish":
             return self._json(fish_series(minutes))
 
@@ -1002,6 +1036,11 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             # ---------- 管理板块：写操作 ----------
+            # 环境仿真控制：暂停/恢复某个站点的数据生成（界面上的「暂停生成」）
+            if p == "/api/env/sim-control":
+                r = envapi.sim_toggle(body)
+                return self._json(r) if r.get("ok") else self._err(400, r.get("error", "参数错误"))
+
             # 手动停止未到终态的命令（组员反馈：投喂要能中途停）
             m = re.match(r"^/api/commands/([\w\-]+)/cancel$", p)
             if m:
