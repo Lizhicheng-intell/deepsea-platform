@@ -83,6 +83,14 @@ PAGES = [
     ("鱼种档案",        "/mgmt/species"),
     ("存箱量台账",      "/mgmt/ledger"),
     ("标定与维护",      "/mgmt/calibration"),
+    # 2026-10-09 组员 PR 新增（4 个 PR 合入后，菜单里 24 个规划页面全部实现）
+    ("鱼类生长模型",    "/fish/growth"),        # PR#5 王浩然
+    ("鱼类原始明细",    "/fish/records"),
+    ("鱼类仿真控制",    "/fish/simulator"),
+    ("结构安全总览",    "/struct/overview"),    # PR#2 邓宇涵
+    ("结构监测详情",    "/struct/detail"),
+    ("智能设备状态",    "/ai/devices"),         # PR#1 李志成
+    ("智能指令日志",    "/ai/commands"),
 ]
 
 
