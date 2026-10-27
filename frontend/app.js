@@ -316,7 +316,14 @@ const TABS = [
           const t = a.alarm_type;
           if (t === 'feeder') out['/ai/feed'] = (out['/ai/feed'] || 0) + 1;
           else if (t === 'light_device') out['/ai/light'] = (out['/ai/light'] || 0) + 1;
-          else if (t === 'command' || t === 'command_timeout') out['/ai/commands'] = (out['/ai/commands'] || 0) + 1;
+          else if (t === 'command' || t === 'command_timeout') {
+            out['/ai/commands'] = (out['/ai/commands'] || 0) + 1;
+            /* 命令失败同时映射到对应设备页面 */
+            var dev = (a.trigger_snapshot && a.trigger_snapshot.device_id) || '';
+            if (dev.indexOf('feeder') >= 0) out['/ai/feed'] = (out['/ai/feed'] || 0) + 1;
+            else if (dev.indexOf('light') >= 0) out['/ai/light'] = (out['/ai/light'] || 0) + 1;
+            else if (dev.indexOf('crane') >= 0) out['/ai/crane'] = (out['/ai/crane'] || 0) + 1;
+          }
           else if (t === 'device_offline') out['/ai/devices'] = (out['/ai/devices'] || 0) + 1;
           else if (t === 'crane') out['/ai/crane'] = (out['/ai/crane'] || 0) + 1;
         });
