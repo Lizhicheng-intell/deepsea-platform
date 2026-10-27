@@ -374,10 +374,14 @@
         this.devices.forEach(function (d) { status[d.device_id] = d; });
         return this.farmList.filter(function (d) { return d.cage_id === cid; }).map(function (d) {
           var s = status[d.device_id] || {};
+          var loc = d.location;
+          /* 任务4：补光灯实际布在水下3m，台账里写的是"灯具"，这里按实际位置覆盖 */
+          if (d.device_type === 'light') loc = cid + ' · 水下 3 m';
           return Object.assign({}, d, {
             device_online: s.device_online,
             device_state: s.device_state,
-            device_params: s.device_params || {}
+            device_params: s.device_params || {},
+            location: loc
           });
         });
       },
