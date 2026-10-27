@@ -302,7 +302,7 @@ const TABS = [
         const out = {};
         DOT_BOARDS.forEach(function (b) { out[b] = 0; });
         (API.alarms() || []).forEach(function (a) {
-          if (a.alarm_status === 'recovered') return;
+          if (a.alarm_status === 'recovered' || a.alarm_status === 'acknowledged') return;
           const b = ALARM_BOARD[a.alarm_type];
           if (b && out[b] !== undefined) out[b] += 1;
         });
@@ -312,7 +312,7 @@ const TABS = [
         this.tick;
         const out = {};
         (API.alarms() || []).forEach(function (a) {
-          if (a.alarm_status === 'recovered') return;
+          if (a.alarm_status === 'recovered' || a.alarm_status === 'acknowledged') return;
           const t = a.alarm_type;
           if (t === 'feeder') out['/ai/feed'] = (out['/ai/feed'] || 0) + 1;
           else if (t === 'light_device') out['/ai/light'] = (out['/ai/light'] || 0) + 1;
