@@ -706,7 +706,7 @@
       "</div>",
       "<div v-else-if=\"screen===1\" class=\"show-row two\">",
       "<div class=\"card\">",
-      "<div class=\"card-title\">哪条数据触发</div>",
+      "<div class=\"card-title\">① 哪条数据触发的</div>",
       "<template v-if=\"picked\">",
       "<div class=\"card-title\">{{ picked.alarm_event_id }} · {{ picked.rule_name }}</div>",
       "<div class=\"kv\">",
