@@ -298,13 +298,27 @@ const TABS = [
          「未解除」= alarm_status !== 'recovered'（active 与 acknowledged 都算）。
          ⚠️ 点进去**不消** —— 它读的是告警的实际状态，不是「已读/未读」。 */
       boardDots: function () {
-        this.tick;   /* ← 建立响应式依赖，否则永久缓存（见 data 里的说明） */
+        this.tick;
         const out = {};
         DOT_BOARDS.forEach(function (b) { out[b] = 0; });
         (API.alarms() || []).forEach(function (a) {
-          if (a.alarm_status === 'recovered') return;      // 已解除 → 不点亮
+          if (a.alarm_status === 'recovered') return;
           const b = ALARM_BOARD[a.alarm_type];
           if (b && out[b] !== undefined) out[b] += 1;
+        });
+        return out;
+      },
+      aiSubDots: function () {
+        this.tick;
+        const out = {};
+        (API.alarms() || []).forEach(function (a) {
+          if (a.alarm_status === 'recovered') return;
+          const t = a.alarm_type;
+          if (t === 'feeder') out['/ai/feed'] = (out['/ai/feed'] || 0) + 1;
+          else if (t === 'light_device') out['/ai/light'] = (out['/ai/light'] || 0) + 1;
+          else if (t === 'command' || t === 'command_timeout') out['/ai/commands'] = (out['/ai/commands'] || 0) + 1;
+          else if (t === 'device_offline') out['/ai/devices'] = (out['/ai/devices'] || 0) + 1;
+          else if (t === 'crane') out['/ai/crane'] = (out['/ai/crane'] || 0) + 1;
         });
         return out;
       },
@@ -430,12 +444,12 @@ const TABS = [
       '  </div>',
       '  <div id="show-scene" data-visible="false"><canvas id="show-model" tabindex="0" aria-label="网箱与设备空间示意，支持拖动旋转"></canvas><div id="show-equipment" aria-label="设备入口"></div></div>',
       '  <div class="body">',
-      '    <nav class="sidenav" aria-label="二级页面"><template v-for="g in sideGroups" :key="g.group"><a v-for="it in g.items" :key="it.path" class="item" :class="{active:path===it.path}" :href="\'#\'+it.path" :aria-current="path===it.path?\'page\':null">{{it.label}}</a></template></nav>',
+      '    <nav class="sidenav" aria-label="二级页面"><template v-for="g in sideGroups" :key="g.group"><a v-for="it in g.items" :key="it.path" class="item" :class="{active:path===it.path}" :href="\'#\'+it.path" :aria-current="path===it.path?\'page\':null">{{it.label}}<span v-if="aiSubDots[it.path]" class="nav-dot">{{aiSubDots[it.path]}}</span></a></template></nav>',
       '    <div class="main"><div class="content" ref="content" :data-page="path"><div v-if="err" class="hint">页面脚本报错：{{err}}</div><div class="business-page"><component :is="page" :key="path"></component></div><div class="secondary-host"></div></div></div>',
       '  </div>',
       '  <footer class="show-footer"><span>运行数据含仿真 · 历史观测按原始时标</span><div class="show-route-pager"><button @click="step(-1)" :disabled="pageIndex===0 && screenInfo.index===0">上一屏</button><span>{{String(pageIndex+1).padStart(2,\'0\')}} / {{allPages.length}}<template v-if="screenInfo.count>1"> · {{screenInfo.index+1}}/{{screenInfo.count}}</template></span><select :value="path" @change="pick($event.target.value)" aria-label="选择展示页面"><option v-for="it in allPages" :key="it.path" :value="it.path">{{it.label}}</option></select><button @click="step(1)" :disabled="pageIndex===allPages.length-1 && screenInfo.index===screenInfo.count-1">下一屏</button></div><span class="show-footer-end">16:9 比赛展示</span></footer>',
       '  <div class="project-signature" aria-label="中国海洋大学水产学院 · 世界小中海大队"><img class="signature-university" src="assets/ouc-emblem.png" alt="中国海洋大学校徽"><img class="signature-college" src="assets/ouc-fisheries-official-mark.png" alt="中国海洋大学水产学院官方组合标"><span>世界小中海大队</span></div>',
-      '  <section v-if="catalogOpen" class="show-catalog" aria-label="页面目录"><div class="show-catalog-head"><h2>页面导航</h2><button @click="catalogOpen=false">返回当前页</button></div><div class="show-catalog-grid"><section v-for="g in menu" :key="g.group"><h3>{{g.group}}</h3><a v-for="it in g.items" :key="it.path" :href="\'#\'+it.path" @click="catalogOpen=false">{{it.label}}</a></section></div></section>',
+      '  <section v-if="catalogOpen" class="show-catalog" aria-label="页面目录"><div class="show-catalog-head"><h2>页面导航</h2><button @click="catalogOpen=false">返回当前页</button></div><div class="show-catalog-grid"><section v-for="g in menu" :key="g.group"><h3>{{g.group}}</h3><a v-for="it in g.items" :key="it.path" :href="\'#\'+it.path" @click="catalogOpen=false">{{it.label}}<span v-if="aiSubDots[it.path]" class="nav-dot">{{aiSubDots[it.path]}}</span></a></section></div></section>',
       '</div>'
     ].join('\n')
   };
